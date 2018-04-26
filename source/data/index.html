@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+  <head>
+	<meta charset="utf-8"/>
+    <meta name='viewport' content='width=device-width'/>
+    <style type="text/css">
+      #joystick {
+        margin: 0 auto;
+        width: 310px;
+        height: 310px;
+        display: block;
+        border: 2px solid #334;
+        border-radius: 10px;
+        background: radial-gradient(circle closest-side, #fff, #ccd);
+      }
+    </style>
+    <script type="text/javascript">
+      let byId = id => document.getElementById(id);
+      var ws = null;
+           
+      function openwebsocket() {
+        ws = new WebSocket('ws://' + window.location.host + ':2205/');
+      }
+
+    window.addEventListener('load', () => {
+      setTimeout(function(){ openwebsocket(); }, 100);
+
+      window.setInterval(() => {
+        sendSteeringCommand(x, y)
+      }, 50);
+
+      let myCanvas = byId('joystick')
+      
+      let dpr = window.devicePixelRatio
+      let canvasWidth = myCanvas.clientWidth
+      let canvasHeight = myCanvas.clientHeight
+        myCanvas.width = canvasWidth * dpr
+        myCanvas.height = canvasHeight * dpr
+
+      let ctx = myCanvas.getContext('2d')
+        ctx.lineWidth = 10
+        ctx.strokeStyle = 'black'
+        ctx.fillStyle = 'red'
+        ctx.scale(dpr, dpr)
+
+      let mouseIsDown = false
+      let hasCurrentTouch = false
+      let currentTouchId = null
+      let pageX = 0, pageY = 0
+      let x = 0, y = 0
+
+      let touchById = (touches, id) => {
+        for (let i = 0; i < touches.length; ++i) {
+          if (touches[i].identifier === id) {
+            return touches[i]
+          }
+        }
+        return null
+      }
+
+      let optionsOrUseCapture = true
+
+      myCanvas.addEventListener('mousedown', e => {
+        mouseIsDown = true
+        pageX = e.pageX
+        pageY = e.pageY
+      }, optionsOrUseCapture)
+
+      window.addEventListener('mousemove', e => {
+        if (mouseIsDown) {
+          pageX = e.pageX
+          pageY = e.pageY
+        }
+      }, optionsOrUseCapture)
+
+      window.addEventListener('mouseup', e => {
+        mouseIsDown = false
+      }, optionsOrUseCapture)
+
+      myCanvas.addEventListener('touchstart', e => {
+        currentTouchId = e.changedTouches[0].identifier
+        pageX = e.changedTouches[0].pageX
+        pageY = e.changedTouches[0].pageY
+        hasCurrentTouch = true
+      }, optionsOrUseCapture)
+
+      window.addEventListener('touchend', e => {
+        if (hasCurrentTouch &&
+            touchById(e.changedTouches, currentTouchId) !== null) {
+            hasCurrentTouch = false
+        }
+      }, optionsOrUseCapture)
+
+      window.addEventListener('touchmove', e => {
+        let item = touchById(e.changedTouches, currentTouchId)
+        if (hasCurrentTouch && item !== null) {
+            pageX = item.pageX
+            pageY = item.pageY
+        }
+        e.preventDefault()
+      }, optionsOrUseCapture)
+
+      function updateXY() {
+        if (!hasCurrentTouch && !mouseIsDown) {
+            x = 0
+            y = 0
+        } else {
+            x = pageX - myCanvas.offsetLeft - canvasWidth/2
+            y = (canvasHeight/2 - (pageY - myCanvas.offsetTop))
+            x /= canvasWidth / 2
+            y /= canvasHeight / 2
+        }
+        x = Math.min(Math.max(x, -1), 1)
+        y = Math.min(Math.max(y, -1), 1)
+    }
+
+      function draw() {
+        updateXY()
+
+        let canvasX = (x + 1) / 2 * canvasWidth,
+            canvasY = (-y + 1) / 2 * canvasHeight
+
+        ctx.lineWidth = 10
+        ctx.lineCap="round"
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight)
+        ctx.beginPath()
+        ctx.moveTo(canvasWidth / 2, canvasHeight / 2)
+        ctx.lineTo(canvasX, canvasY)
+        ctx.stroke()
+
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.arc(canvasX, canvasY, 15, 0, 2*Math.PI)
+        ctx.fill()
+        ctx.stroke()
+
+        window.requestAnimationFrame(draw)
+      }
+      window.requestAnimationFrame(draw)
+      
+      function sendSteeringCommand(turning, speed) {
+        if(ws == null) return;
+        if (ws.readyState !== 1) return;
+        
+        let dview = new DataView(new ArrayBuffer(3))
+        dview.setUint8(0, 0)
+        dview.setInt8(1, turning * 127)
+        dview.setInt8(2, speed * 127)
+        ws.send(dview.buffer)
+      }
+    })
+
+     </script>
+  </head>
+
+  <body>
+	  <canvas id='joystick'></canvas>
+  </body>
+
+</html>

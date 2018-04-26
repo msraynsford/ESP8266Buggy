@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang='en'>
+  <head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <style>
+      .topdiv {
+          overflow: hidden;
+          min-width: 300px;
+      }
+
+      /* Style the topnav links */
+      .topdiv div {
+          float: left;
+          display: block;
+          text-align: center;
+          width: 33%;
+          min-height: 1px;
+      }
+
+      #slider {
+          width:95%;
+          margin: 5px 2% 5px 2%;
+      }
+    </style>
+    <script>
+      let byId = id => document.getElementById(id);
+      let intById = id => parseInt(byId(id).value);
+      
+      var ws = null;
+      var msg = null;
+      
+      window.onload = function () {   
+        setTimeout(function(){ openwebsocket(); }, 100);
+        
+        min = byId('min');
+        max = byId('max');
+        slider = byId('slider');
+          
+        slider.min = min.value;
+        slider.max = max.value;
+        change(byId('zero').value);
+      }
+      
+      function openwebsocket() {
+        ws = new WebSocket('ws://' + window.location.host + ':2205/');
+
+        ws.onopen = function () { getservos(); };
+        ws.onmessage = function (event) { onmessage(event); }; 
+      }
+      
+      function getservos() {
+        obj = { type: "getinfo" };
+        dbParam = JSON.stringify(obj);
+        ws.send(dbParam);
+        console.log(dbParam);
+      }
+           
+      function onmessage(event) { 
+        console.log(event.data);
+        
+        msg = JSON.parse(event.data);
+  
+        var listItems = "";
+        for (var i = 0; i < msg.numservos; i++) {
+          listItems += "<option value='" + i + "'>" + i + "</option>";
+        }
+        byId('servono').innerHTML = listItems;
+        
+        changeservo(0);
+      }
+      
+      function changeservo(id) {
+        if(msg != null) {
+          setmin(msg.servos[id].min);
+          setzero(msg.servos[id].zero);
+          setmax(msg.servos[id].max);
+
+          change(byId('zero').value);
+        }
+      } 
+      
+      function updateservo() {
+        var id = intById("servono");
+        msg.servos[id].min = parseInt(byId("min").value);
+        msg.servos[id].zero = parseInt(byId("zero").value);
+        msg.servos[id].max = parseInt(byId("max").value);
+
+        obj = { type: "setinfo", 
+                id:  parseInt(byId("servono").value), 
+                min:    parseInt(byId("min").value), 
+                zero:   parseInt(byId("zero").value), 
+                max:    parseInt(byId("max").value)};
+                
+        dbParam = JSON.stringify(obj);
+        ws.send(dbParam);
+        console.log(dbParam);
+      }
+       
+      function limitrange(input) {
+        if(parseInt(input.value) < parseInt(input.min)) input.value = input.min;
+        if(parseInt(input.value) > parseInt(input.max)) input.value = input.max;
+      }
+      
+      function change(value) {
+        byId('slider').value=value;
+        byId('value').innerHTML=value;
+      }
+    
+      window.setInterval(() => {
+        sendServoCommand()
+      }, 50)
+
+      function sendServoCommand() {
+        if(ws == null) return;
+        if (ws.readyState !== 1) return;
+     
+        let dview = new DataView(new ArrayBuffer(4));
+        dview.setUint8(0, 2);
+        dview.setUint8(1, intById("servono"));
+        dview.setInt16(2, intById("slider"));
+        ws.send(dview.buffer);
+      }
+      
+      function changemin() {
+        min = byId('min');
+        max = byId('max');
+
+        limitrange(min);
+        
+        if(parseInt(byId('zero').value) < parseInt(min.value)) byId('zero').value = min.value;
+        if(parseInt(max.value) < parseInt(min.value))          max.value = min.value;
+
+        setmin(min.value);
+        change(min.value);
+      }
+      
+      function setmin(value) {
+        byId('min').value = value;
+        byId('zero').min = min.value;
+        byId('slider').min = min.value;
+      }
+
+      function changezero() {
+        limitrange(byId('zero'));
+        
+        setzero(zero.value);
+        change(byId('zero').value);
+      }
+      
+      function setzero(value) {
+        zero.value = value;
+        byId('slider').value = value;
+      }
+
+      function changemax() {
+        min = byId('min');
+        max = byId('max');
+
+        limitrange(max);
+        
+        if(parseInt(byId('zero').value) > parseInt(max.value)) byId('zero').value = max.value;  
+        if(parseInt(min.value) > parseInt(max.value))          max.value = max.value;   
+     
+        setmax(max.value);
+        change(max.value);
+      }
+
+      function setmax(value) {
+        byId('max').value = value;
+        byId('zero').max = value;
+        byId('slider').max = value;
+     }
+
+      function mouseup() {
+        change(byId('zero').value);
+      }
+      </script>
+    <title>Servo Control</title>
+  </head>
+  <body>
+    <div>Servo No: <select id='servono' onchange='changeservo(this.value)' value='0'></select></div>
+    <form id='form' action='/servo' method='post'>
+      <div class='topdiv'>
+        <div>Min</div>
+        <div>Zero</div>
+        <div>Max</div>
+      </div>
+      <div class='topdiv'>
+        <div><input id='min' type='number' onchange='changemin()' value='700' min='500' max='3000'></div>
+        <div><input id='zero' type='number' onchange='changezero()' value='1550' min='500' max='3000'></div>
+        <div><input id='max' type='number' onchange='changemax()' value='2400' min='500' max='3000'></div>
+      </div>
+      <div class='topdiv'>
+        <input id='slider' type='range' oninput='change(this.value)' onmouseup='mouseup()'>
+      </div>
+      <div class='topdiv'>
+        <div id='value'>Min</div>
+        <div></div>
+        <div><input type='button' value='Update Servo' onclick='updateservo();'></div>
+      </div>
+    </form>
+  </body>
+</html>
